@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Property Rumah - Modern Minimalis</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+    body { margin: 0; background: #f4f7fc; color: #222; }
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 18px 24px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      position: sticky; top: 0; z-index: 99;
+    }
+    header h1 { margin: 0; font-size: 22px; color: #2e5fff; font-weight: 600; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+    input, select, button {
+      padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px;
+    }
+    button {
+      background: #2e5fff; color: white; border: none; cursor: pointer; transition: 0.2s;
+    }
+    button:hover { background: #204bcc; }
+    #exportBtn { background: #28a745; }
+    #exportBtn:hover { background: #1e7e34; }
+
+    .container { max-width: 1200px; margin: 20px auto; padding: 0 16px; }
+    .main { display: grid; grid-template-columns: 1fr 400px; gap: 20px; }
+    @media(max-width:900px){ .main { grid-template-columns: 1fr; } }
+
+    .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .card {
+      background: white; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.06); transition: all .2s;
+    }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 18px rgba(0,0,0,0.1); }
+    .card img { width: 100%; height: 180px; object-fit: cover; }
+    .card-body { padding: 14px; }
+    .card h3 { margin: 0 0 6px; font-size: 16px; color: #333; }
+    .price { color: #2e5fff; font-weight: 600; font-size: 15px; }
+    .meta { font-size: 13px; color: #666; margin-bottom: 6px; }
+    .btn-detail {
+      background: #2e5fff; color: white; border: none; padding: 8px 14px;
+      border-radius: 8px; cursor: pointer; font-size: 13px; width: 100%; margin-top: 8px;
+    }
+    .btn-detail:hover { background: #204bcc; }
+
+    #map { width: 100%; height: 600px; border-radius: 12px; }
+    footer { text-align: center; margin-top: 24px; padding: 16px; background: white; color: #666; font-size: 14px; border-top: 1px solid #eee; }
+
+    /* === Modal Detail === */
+    .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center; animation: fadeIn .3s;
+    }
+    @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
+
+    .modal-content {
+      background: white; padding: 20px; border-radius: 14px;
+      max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: popUp .3s ease;
+    }
+    @keyframes popUp { from {transform: scale(.9); opacity:0;} to {transform: scale(1); opacity:1;} }
+
+    .close { float: right; font-size: 26px; cursor: pointer; color: #777; }
+    .close:hover { color: #000; }
+
+    .detail-photo img {
+      width: 100%; height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 12px;
+    }
+
+    .detail-info h2 { margin: 0; font-size: 22px; color: #222; }
+    .detail-info p { margin: 8px 0; color: #666; }
+    .price-large { color: #2e5fff; font-size: 20px; font-weight: bold; }
+
+    .buy-btn {
+      display: inline-block; background: #28a745; color: white;
+      padding: 10px 18px; font-size: 15px; border-radius: 8px; cursor: pointer;
+      text-decoration: none; margin-top: 10px; transition: 0.2s;
+    }
+    .buy-btn:hover { background: #218838; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏡 Property Rumah AFR</h1>
+    <div class="controls">
+      <input id="search" type="search" placeholder="Cari lokasi..." />
+      <select id="typeFilter">
+        <option value="all">Semua</option>
+        <option value="house">Rumah</option>
+        <option value="apartment">Apartemen</option>
+        <option value="shop">Ruko</option>
+      </select>
+      <button id="exportBtn">📄 Export PDF</button>
+    </div>
+  </header>
+
+  <div class="container" id="printable-area">
+    <div class="main">
+      <div>
+        <h2>Daftar Properti</h2>
+        <div id="cards" class="list"></div>
+      </div>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <footer>© 2025 Property Rumah — Desain modern & minimalis</footer>
+
+  <!-- Modal Detail -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="closeModal">&times;</span>
+      <div class="detail-photo" id="detailPhoto"></div>
+      <div class="detail-info">
+        <h2 id="detailTitle"></h2>
+        <p id="detailArea"></p>
+        <div class="price-large" id="detailPrice"></div>
+        <a href="#" class="buy-btn" id="buyBtn">💬 Beli Sekarang</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const properties = [
+      {
+        id:1, title:"Rumah Minimalis Karawang", type:"house",
+        price:"Rp 890.000.000", area:"Karawang",
+        lat:-6.3265, lng:107.3020,
+        image:"rumah minimalis karawang.webp"
+      },
+      {
+        id:2, title:"Apartemen View Kota Bandung", type:"apartment",
+        price:"Rp 650.000.000", area:"Bandung",
+        lat:-6.9, lng:107.6,
+        image:"https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=800&q=60"
+      },
+      {
+        id:3, title:"Ruko Strategis di Semarang", type:"shop",
+        price:"Rp 400.000.000", area:"Semarang",
+        lat:-6.97, lng:110.4,
+        image:"ruko semarang.jpg"
+      }
+    ];
+
+    const cardsEl = document.getElementById("cards");
+    const map = L.map("map").setView([-6.2, 106.8], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(map);
+
+    function renderCards(list){
+      cardsEl.innerHTML = "";
+      list.forEach(p=>{
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <img src="${p.image}" alt="${p.title}">
+          <div class="card-body">
+            <h3>${p.title}</h3>
+            <div class="meta">${p.area}</div>
+            <div class="price">${p.price}</div>
+            <button class="btn-detail" onclick="showDetail(${p.id})">👁️ Lihat Detail</button>
+          </div>`;
+        cardsEl.appendChild(card);
+      });
+    }
+
+    const markers = [];
+    function addMarkers(list){
+      markers.forEach(m=>map.removeLayer(m));
+      list.forEach(p=>{
+        const marker = L.marker([p.lat, p.lng]).addTo(map)
+          .bindPopup(`<strong>${p.title}</strong><br>${p.area}<br>${p.price}<br><button onclick='showDetail(${p.id})'>Lihat</button>`);
+        markers.push(marker);
+      });
+    }
+
+    function applyFilter(){
+      const q = document.getElementById("search").value.toLowerCase();
+      const t = document.getElementById("typeFilter").value;
+      const filtered = properties.filter(p=>{
+        const matchText = (p.title + p.area).toLowerCase().includes(q);
+        const matchType = t === "all" || p.type === t;
+        return matchText && matchType;
+      });
+      renderCards(filtered);
+      addMarkers(filtered);
+    }
+
+    document.getElementById("search").addEventListener("input", applyFilter);
+    document.getElementById("typeFilter").addEventListener("change", applyFilter);
+    document.getElementById("exportBtn").addEventListener("click", ()=>{
+      html2pdf().from(document.getElementById("printable-area")).set({filename:'daftar-properti.pdf'}).save();
+    });
+
+    renderCards(properties);
+    addMarkers(properties);
+
+    // === Modal Detail ===
+    const modal = document.getElementById("modal");
+    const closeModal = document.getElementById("closeModal");
+    const detailTitle = document.getElementById("detailTitle");
+    const detailArea = document.getElementById("detailArea");
+    const detailPrice = document.getElementById("detailPrice");
+    const detailPhoto = document.getElementById("detailPhoto");
+    const buyBtn = document.getElementById("buyBtn");
+
+    function showDetail(id){
+      const p = properties.find(x=>x.id===id);
+      if(!p) return;
+      detailTitle.textContent = p.title;
+      detailArea.textContent = p.area;
+      detailPrice.textContent = p.price;
+      detailPhoto.innerHTML = `<img src="${p.image}" alt="${p.title}">`;
+      modal.style.display = "flex";
+      buyBtn.href = `https://wa.me/6283805207945?text=Halo, saya tertarik dengan ${encodeURIComponent(p.title)} (${p.price})`;
+    }
+
+    closeModal.onclick = ()=> modal.style.display = "none";
+    window.onclick = e => { if(e.target===modal) modal.style.display="none"; }
+  </script>
+</body>
+</html>
